@@ -1,0 +1,10 @@
+/__pycache__/
+*/__pycache__/
+/__pycache__/*
+*/__pycache__/*
+__pycache__/
+/.idea/
+/venv/
+trader/backend/data/database.db
+trader/.env
+ticker_data.db
