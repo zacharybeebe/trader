@@ -1104,51 +1104,6 @@ def startswith(value: str, startswith_check: Union[str, Sequence[str]]) -> bool:
         return sum([value.startswith(s) for s in startswith_check]) > 0
 
 
-# def stddevs_by_period_length(data: pd.Series, period_length: int = 120, std_multiplier: float = 1) -> tuple[list, list]:
-#     upper_stds = []
-#     lower_stds = []
-#     #############################################################
-#     def update_standard_devs(series_chunk: pd.Series):
-#         mean = series_chunk.mean()
-#         std = series_chunk.std()
-#         upper_stds.extend([mean + std] * len(series_chunk))
-#         lower_stds.extend([mean - std] * len(series_chunk))
-#     #############################################################
-#     len_data = len(data)
-#     if len_data < period_length:
-#         return [np.nan] * len_data, [np.nan] * len_data
-
-#     temp_df = pd.DataFrame({
-#         'target': data,
-#         'idx': range(len_data)
-#     })
-
-#     for i in range(len_data):
-#         if i < period_length:
-#             upper_stds.append(np.nan)
-#             lower_stds.append(np.nan)
-#         else:
-#             chunk = temp_df.loc[((i - period_length - 1 < temp_df['idx']) & (temp_df['idx'] <= i)), 'target']        
-#             mean = chunk.mean()
-#             std = chunk.std()
-#             upper_stds.append(mean + (std * std_multiplier))
-#             lower_stds.append(mean - (std * std_multiplier))
-
-
-#     # # Get the standard deviations to use for each chunk
-#     # previous_idx = 0
-#     # at_idx = period_length
-
-#     # while at_idx < len_data:
-#     #     chunk = temp_df.loc[((previous_idx < temp_df['idx']) & (temp_df['idx'] <= at_idx)), 'target']
-#     #     update_standard_devs(chunk)
-#     #     previous_idx = at_idx
-#     #     at_idx += period_length
-#     # chunk = temp_df.loc[((previous_idx < temp_df['idx']) & (temp_df['idx'] <= at_idx)), 'target']
-#     # update_standard_devs(chunk)
-#     return upper_stds, lower_stds
-
-
 def stddevs_by_period_length(
         data: pd.Series, 
         period_length: int = 120, 
@@ -1197,37 +1152,6 @@ def stddevs_by_period_length(
     return upper_stds, lower_stds
 
 
-# def stddevs_by_period_length(data: pd.Series, period_length: int = 120) -> tuple[list, list]:
-#     upper_stds = []
-#     lower_stds = []
-#     #############################################################
-#     def update_standard_devs(series_chunk: pd.Series):
-#         mean = series_chunk.mean()
-#         std = series_chunk.std()
-#         upper_stds.extend([mean + std] * len(series_chunk))
-#         lower_stds.extend([mean - std] * len(series_chunk))
-#     #############################################################
-#     len_data = len(data)
-#     if len_data < period_length:
-#         return [np.nan] * len_data, [np.nan] * len_data
-
-#     temp_df = pd.DataFrame({
-#         'target': data,
-#         'idx': range(len_data)
-#     })
-#     # Get the standard deviations to use for each chunk
-#     previous_idx = -1
-#     at_idx = period_length
-
-#     while at_idx < len_data:
-#         chunk = temp_df.loc[((previous_idx < temp_df['idx']) & (temp_df['idx'] <= at_idx)), 'target']
-#         update_standard_devs(chunk)
-#         previous_idx = at_idx
-#         at_idx += period_length
-#     chunk = temp_df.loc[((previous_idx < temp_df['idx']) & (temp_df['idx'] <= at_idx)), 'target']
-#     update_standard_devs(chunk)
-#     return upper_stds, lower_stds
-
 def tablefy_dict(dictionary: dict, max_display_length: int = 17) -> str:
     """
     Returns a formatted string of a dictionary in a table format
@@ -1252,6 +1176,44 @@ def tablefy_dict(dictionary: dict, max_display_length: int = 17) -> str:
     breaks = ''.join([('-' * max_display_length) + '|' for _ in range(len(dictionary))]) + '\n'
     table = breaks + f"{'|'.join(headers)}|\n" + breaks + f"{'|'.join(values)}|\n" + breaks[:-1]
     return table
+
+
+def tablefy_dict_html(dictionary: dict) -> str:
+    """
+    Returns a formatted string of a dictionary in a table format
+    :param dictionary:          The dictionary to format
+    :param max_key_length:      The maximum length of the keys
+    :param max_value_length:    The maximum length of the values
+    :return:    str
+    """
+    html = """
+    <html>
+        <head>
+            <style>
+                table, td {{
+                    border: 1px solid black;
+                    border-collapse: collapse;
+                    padding: 5px;
+                }}
+            </style>
+        </head>
+        <body>
+            {table_block}
+        </body>
+    </html>
+    """
+    table_block = """
+            <table>
+                <tbody>
+    """
+    for key, value in dictionary.items():
+        table_block += f'\t\t\t<tr><td>{key}</td><td>{value}</td></tr>\n'
+    table_block += """
+                </tbody>
+            </table>
+    """
+    return html.format(table_block=table_block)
+
 
 def ticker_check_pair(ticker: str, pair: str = 'USD', sep: str = '-', lower: bool = False) -> str:
     cryptos = ['BTC', 'DOGE', 'ETH', 'LTC', 'XRP', 'ADA', 'BCH', 'BNB', 'EOS', 'ETC', 'LINK', 'TRX', 'XLM', 'XTZ', 'XMR', 'ZEC']

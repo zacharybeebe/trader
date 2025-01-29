@@ -11,12 +11,14 @@ if __name__ == '__main__':
 
 
 
-    x = pd.DataFrame({
-        'a': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
-    })
 
-    x['c'] = x['a'].pct_change(periods=5) * 100
-    print(x)
+
+    # x = pd.DataFrame({
+    #     'a': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+    # })
+
+    # x['c'] = x['a'].pct_change(periods=5) * 100
+    # print(x)
 
 
     # rhg = RobinHoodGetter()
@@ -24,8 +26,30 @@ if __name__ == '__main__':
     # print(xx)
     
 
-    #rh = Robinhood()
+    rh = Robinhood()
+    z = rh.account
+    x = rh.all_holdings
+    y = rh.order_history(
+        'DOGE',
+        start=datetime(year=2020, month=12, day=1),
+        side='sell',
+        order_type='market',
+    )
+    s = rh.estimated_both('DOGE', 15000)
+    ba = rh.best_bid_ask('DOGE')
+    aa = rh.order_history_single(client_order_id='a219264d-8c2d-4bbd-a449-259d0f6492a9')
+    print(z)
+    print()
+    print(x)
+    print()
+    for zzz in y:
+        debug_print_dict(zzz)
+    print(s)
+    print(ba)
+    debug_print_dict(aa)
 
+    # idd = '6797b7f6-5a94-41f4-aafe-ab3a6f0a5dcf
+    # client_order_id = 'a219264d-8c2d-4bbd-a449-259d0f6492a9'
 
     # xx = rh.qty_at_estimated_bid(
     #     'DOGE',

@@ -1743,6 +1743,108 @@ class Spikes(Strategy):
 
 
 
+class Waves(Strategy):
+    """
+    DOGE 5m ($5,000, 2.5 months)
+        final_value  buy_signals  sell_signals  gain_pct  retract_pct  reset_low_pct  reset_high_pct
+0   9942.594580           16            15         7            8             24              15
+1   9744.978874           13            12         8           10             18              15
+2   9688.531991           12            11         8           10             15              16
+3   9675.643744           12            11         8           10             15              17
+4   9609.902641           12            11         8           10             15              18
+5   9589.852626           14            13         8            7             22              15
+6   9587.027469           21            20         5            5             21              18
+7   9560.889207           21            20         5            5             21              19
+8   9549.726371           14            13         7            9             18              15
+9   9548.782361           21            20         5            5             22              18
+    """
+
+
+    gain_pct = Strategy.Parameter(8)
+    retract_pct = Strategy.Parameter(10)
+    reset_low_pct = Strategy.Parameter(15)
+    reset_high_pct = Strategy.Parameter(16)
+
+    def __init__(
+            self, 
+            # Strategy Params
+            data: pd.DataFrame, 
+            use_data_inplace: bool = False, 
+            column_mappers: Optional[dict] = None, 
+            clean_columns: bool = True,
+            init_prepare: bool = True,
+
+            # Custom Params
+            gain_pct: int = 7.5,
+            retract_pct: int = 7.5,
+            reset_low_pct: int = 20.0,
+            reset_high_pct: int = 20.0
+        ):
+        self.gain_pct = gain_pct
+        self.retract_pct = retract_pct
+        self.reset_low_pct = reset_low_pct
+        self.reset_high_pct = reset_high_pct
+        super().__init__(
+            data=data, 
+            use_data_inplace=use_data_inplace, 
+            column_mappers=column_mappers,
+            clean_columns=clean_columns,
+            init_prepare=init_prepare
+        )
+
+    def prepare(self):
+        # Prepare Indicators by Params
+        self.data[self.buy_column] = np.nan
+        self.data[self.sell_column] = np.nan
+        self.data['buy_type'] = None
+        self.data['sell_type'] = None
+        buy_anchor = None
+        sell_anchor = None
+        in_position = False
+        buy_anchor_reset = False
+        sell_anchor_reset = False
+        for row in self.data.itertuples():
+            # Do the inital buy at whatever price
+            if sell_anchor is None:
+                self.data.at[row.Index, self.buy_column] = 1
+                self.data.at[row.Index, 'buy_type'] = 'initial'
+                sell_anchor = row.close
+                in_position = True
+            
+            # Examine if we should sell
+            elif in_position and row.close >= sell_anchor * (1 + (self.gain_pct / 100)):
+                self.data.at[row.Index, self.sell_column] = 1
+                if sell_anchor_reset:
+                    self.data.at[row.Index, 'sell_type'] = 'reset'
+                    sell_anchor_reset = False
+                else:
+                    self.data.at[row.Index, 'sell_type'] = 'normal'
+                buy_anchor = row.close
+                in_position = False
+
+            # Examine if we should buy
+            elif not in_position and buy_anchor is not None and row.close <= buy_anchor * (1 - (self.retract_pct / 100)):
+                self.data.at[row.Index, self.buy_column] = 1
+                if buy_anchor_reset:
+                    self.data.at[row.Index, 'buy_type'] = 'reset'
+                    buy_anchor_reset = False
+                else:
+                    self.data.at[row.Index, 'buy_type'] = 'normal'
+                sell_anchor = row.close
+                in_position = True
+            
+            # Examine if we should reset the sell anchor
+            elif in_position and row.close <= sell_anchor * (1 - (self.reset_low_pct / 100)):
+                sell_anchor = row.close
+                sell_anchor_reset = True
+
+            # Examine if we should reset the buy anchor
+            elif not in_position and row.close >= buy_anchor * (1 + (self.reset_high_pct / 100)):
+                buy_anchor = row.close
+                buy_anchor_reset = True
+
+
+
 class JakeStrat(Strategy):
     """
     Jake Strat

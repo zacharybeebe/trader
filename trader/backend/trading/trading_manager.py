@@ -3,7 +3,7 @@ import json
 import os
 import websockets
 
-from .strategy.strategies import *
+from .robinhood import *
 from ..data.engine import Engine
 
 
@@ -331,7 +331,192 @@ class TradingManager:
             current_cash=current_cash,
             current_trade=current_trade
         )
-        return broker        
+        return broker     
+    
+    @classmethod
+    def run_doge_5m_waves(
+            cls, 
+            gain_pct: int = 8,
+            retract_pct: int = 10,
+            reset_low_pct: int = 15,
+            reset_high_pct: int = 16
+        ) -> None:
+        rh = Robinhood()
+        ticker = 'DOGE'
+        interval = '5m'
+        ###################################################################
+        def get_cash_and_trade() -> tuple[float, Optional[dict]]:
+            current_cash = rh.buying_power
+            all_holdings = rh.all_holdings
+            if all_holdings is not None and len(all_holdings) > 0:
+                current_trade = rh.all_holdings[0]
+            else:
+                current_trade = None
+            return current_cash, current_trade
+        
+        def get_last_order(side: Literal['buy', 'sell']) -> Optional[dict]:
+            order_history = rh.order_history('DOGE', side=side)
+            if order_history is not None and len(order_history) > 0:
+                return order_history[0]
+            return None
+        
+        ###################################################################        
+        current_cash, current_trade = get_cash_and_trade()
+        if current_trade is not None:
+            in_position = True
+            shares = float(current_trade['total_quantity'])
+            sell_anchor = float(get_last_order(side='buy')['average_price'])
+            buy_anchor = None
+        else:
+            in_position = False
+            shares = 0
+            buy_anchor = float(get_last_order(side='sell')['average_price'])
+            sell_anchor = None
+
+        buy_anchor_reset = False
+        sell_anchor_reset = False
+
+        init_estimated_prices = rh.best_bid_ask(ticker)
+        if init_estimated_prices is not None:
+            buy_price = float(estimated_prices[f'{ticker}-USD']['bid_inclusive_of_sell_spread'])
+            sell_price = float(estimated_prices[f'{ticker}-USD']['ask_inclusive_of_buy_spread'])
+        else:
+            buy_price = None
+            sell_price = None
+
+        cls.sleep_to_next_interval(interval=interval)
+        while True:
+            try:
+                now = datetime.now()
+                estimated_prices = rh.best_bid_ask(ticker)
+                if estimated_prices is not None:
+                    current_buy_price = float(estimated_prices[f'{ticker}-USD']['bid_inclusive_of_sell_spread'])
+                    current_sell_price = float(estimated_prices[f'{ticker}-USD']['ask_inclusive_of_buy_spread'])
+                    if buy_price is not None:
+                        buy_pct_change = ((current_buy_price - buy_price) / buy_price) * 100
+                    else:
+                        buy_pct_change = None
+                    if sell_price is not None:
+                        sell_pct_change = ((current_sell_price - sell_price) / sell_price) * 100
+                    else:
+                        sell_pct_change = None
+                    buy_price = current_buy_price
+                    sell_price = current_sell_price                    
+                    table_dict = None
+                    order_type = None
+                    sub_order_type = None
+
+                    # Do the inital buy at whatever price if not in position for the first iteration
+                    if sell_anchor is None:
+                        trade_results = rh.market_buy(ticker, quote_amount=current_cash)
+                        while trade_results['state'] != 'filled':
+                            trade_results = rh.order_history_single(client_order_id=trade_results['client_order_id'])                        
+                        sell_anchor = float(trade_results['average_price'])
+                        shares = float(trade_results['filled_asset_quantity'])
+                        in_position = True
+                        current_cash, current_trade = get_cash_and_trade()
+                        order_type = 'Buy'
+                        sub_order_type = 'Initial'
+                        table_dict = {
+                            'Order Type': order_type,
+                            'Sub Order Type': sub_order_type,
+                            'Current Time': now.strftime("%Y-%m-%d %H:%M:%S"),
+                            'Actual Buy Price': f'${sell_anchor:,.4f}',
+                            'Shares': f'{shares:,.1f}',
+                            'Est Buy Price': f'${buy_price:,.4f}',
+                            'Buy Pct Change': 'None' if buy_pct_change is None else f'{buy_pct_change:,.2f}%',
+                            'Sell Pct Change': 'None' if sell_pct_change is None else f'{sell_pct_change:,.2f}%',
+                            'Current Cash': f'${current_cash:,.2f}'
+                        }
+                    
+                    # Examine if we should sell
+                    elif in_position and sell_price >= sell_anchor * (1 + (gain_pct / 100)):
+                        trade_results = rh.market_sell(ticker, asset_quantity=shares)
+                        while trade_results['state'] != 'filled':
+                            trade_results = rh.order_history_single(client_order_id=trade_results['client_order_id'])                        
+                        buy_anchor = float(trade_results['average_price'])
+                        shares = 0
+                        in_position = False
+                        current_cash, current_trade = get_cash_and_trade()
+                        order_type = 'Sell'
+                        if sell_anchor_reset:
+                            sub_order_type = 'Reset'
+                            sell_anchor_reset = False
+                        else:
+                            sub_order_type = 'Normal'
+                        table_dict = {
+                            'Order Type': order_type,
+                            'Sub Order Type': sub_order_type,
+                            'Current Time': now.strftime("%Y-%m-%d %H:%M:%S"),
+                            'Actual Sell Price': f'${buy_anchor:,.4f}',
+                            'Est Sell Price': f'${sell_price:,.4f}',
+                            'Buy Pct Change': 'None' if buy_pct_change is None else f'{buy_pct_change:,.2f}%',
+                            'Sell Pct Change': 'None' if sell_pct_change is None else f'{sell_pct_change:,.2f}%',
+                            'Current Cash': f'${current_cash:,.2f}'
+                        }
+
+                    # Examine if we should buy
+                    elif not in_position and buy_anchor is not None and buy_price <= buy_anchor * (1 - (retract_pct / 100)):
+                        trade_results = rh.market_buy(ticker, quote_amount=current_cash)
+                        while trade_results['state'] != 'filled':
+                            trade_results = rh.order_history_single(client_order_id=trade_results['client_order_id'])                        
+                        sell_anchor = float(trade_results['average_price'])
+                        shares = float(trade_results['filled_asset_quantity'])
+                        in_position = True
+                        current_cash, current_trade = get_cash_and_trade()
+                        order_type = 'Buy'
+                        if buy_anchor_reset:
+                            sub_order_type = 'Reset'
+                            buy_anchor_reset = False
+                        else:
+                            sub_order_type = 'Normal'
+                        table_dict = {
+                            'Order Type': order_type,
+                            'Sub Order Type': sub_order_type,
+                            'Current Time': now.strftime("%Y-%m-%d %H:%M:%S"),
+                            'Actual Buy Price': f'${sell_anchor:,.4f}',
+                            'Shares': f'{shares:,.1f}',
+                            'Est Buy Price': f'${buy_price:,.4f}',
+                            'Buy Pct Change': 'None' if buy_pct_change is None else f'{buy_pct_change:,.2f}%',
+                            'Sell Pct Change': 'None' if sell_pct_change is None else f'{sell_pct_change:,.2f}%',
+                            'Current Cash': f'${current_cash:,.2f}'
+                        }
+                    
+                    # Examine if we should reset the sell anchor
+                    elif in_position and sell_price <= sell_anchor * (1 - (reset_low_pct / 100)):
+                        sell_anchor = sell_price
+                        sell_anchor_reset = True
+
+                    # Examine if we should reset the buy anchor
+                    elif not in_position and buy_price >= buy_anchor * (1 + (reset_high_pct / 100)):
+                        buy_anchor = buy_price
+                        buy_anchor_reset = True
+                    
+
+                    if table_dict is not None:
+                        table = tablefy_dict(table_dict, max_display_length=17)
+                        table_html = tablefy_dict_html(table_dict)
+                        if order_type == 'Buy':
+                            color_code = 35
+                        else:
+                            color_code = 32
+                        prtcolor(f'{order_type} - {sub_order_type}\n' + table, color_code=color_code)
+                        send_email(
+                            to='z.beebe@yahoo.com',
+                            subject=f'{order_type} - {sub_order_type}',
+                            message=table_html,
+                            message_contains_html=True
+                        )
+
+                cls.sleep_to_next_interval(interval=interval)
+
+            except KeyboardInterrupt:
+                break
+
+            except Exception as e:
+                print(f'{e=}')
+                print(traceback.format_exc())
+                break    
 
     
     @staticmethod

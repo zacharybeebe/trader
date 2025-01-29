@@ -521,12 +521,13 @@ class Robinhood(object):
         else:
             return None
     
-    def order_history_single(self, order_id: str) -> Optional[dict]:
-        response, _ = self._request(
-            request_method='GET',
-            url_suffix=f'/api/v1/crypto/trading/orders/{order_id}'
-        )
-        return response
+    def order_history_single(self, client_order_id: str) -> Optional[dict]:
+        order_history = self.order_history()
+        if order_history is not None and len(order_history) > 0:
+            for order in order_history:
+                if order['client_order_id'] == client_order_id:
+                    return order
+        return None
     
     def qty_at_estimated_ask(self, symbol: str, quote_amount: float, drawdown: float = 0.985) -> Optional[float]:
         symbol = self._format_symbol(symbol, as_pair=True)
